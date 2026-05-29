@@ -1,34 +1,50 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>瑞士轮对阵计算器</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
-  <main class="container">
-    <h1>瑞士轮对阵表</h1>
 
-    <section class="panel">
-      <h2>赛事设置</h2>
-      <div class="grid">
-        <label>队伍数量
-          <input id="teamCount" type="number" min="2" max="64" step="2" value="8" />
-        </label>
-        <label>轮数
-          <input id="roundCount" type="number" min="1" max="9" value="3" />
-        </label>
+<body>
+  <div class="bg-orb bg-orb-one"></div>
+  <div class="bg-orb bg-orb-two"></div>
+  <main class="container">
+    <header class="hero">
+      <p class="eyebrow">Swiss Bracket Studio</p>
+      <h1>瑞士轮对阵计算器</h1>
+      <p class="subtitle">生成、调整、自动推演每一轮对阵，界面会随着赛程实时更新。</p>
+    </header>
+
+    <section class="panel panel--settings">
+      <div class="settings-inline">
+        <h2>赛事设置</h2>
+        <div class="settings-controls">
+          <label>队伍数量
+            <input id="teamCount" type="number" min="2" max="64" step="2" value="8" />
+          </label>
+          <label>轮数
+            <input id="roundCount" type="number" min="1" max="9" value="3" />
+          </label>
+          <button id="generateBtn" type="button">生成赛程</button>
+        </div>
       </div>
-      <button id="generateBtn" type="button">生成赛程</button>
     </section>
 
     <section class="panel">
-      <h2>对阵表（首轮可直接设置对阵，后续自动计算）</h2>
+      <h2>对阵表</h2>
       <div id="bracket" class="bracket"></div>
+    </section>
+
+    <section class="panel">
+      <h2>排名表</h2>
+      <div id="ranking" class="ranking"></div>
     </section>
   </main>
 
   <script src="./app.js"></script>
 </body>
+
 </html>
