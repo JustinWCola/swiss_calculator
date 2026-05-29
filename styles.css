@@ -95,6 +95,19 @@ h1 {
   letter-spacing: -0.04em;
 }
 
+.hero-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.author {
+  font-size: 14px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 .subtitle {
   max-width: 720px;
   margin: 12px 0 0;
@@ -270,6 +283,12 @@ button:focus-visible {
 
 .ranking {
   margin-top: 10px;
+}
+
+.note-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
 }
 
 .ranking-table {
