@@ -8,7 +8,7 @@
 </head>
 <body>
   <main class="container">
-    <h1>瑞士轮比赛自定义与对阵概率</h1>
+    <h1>瑞士轮对阵表</h1>
 
     <section class="panel">
       <h2>赛事设置</h2>
@@ -16,39 +16,16 @@
         <label>队伍数量
           <input id="teamCount" type="number" min="2" max="64" step="2" value="8" />
         </label>
-        <label>赛制
-          <select id="format">
-            <option value="bo1">BO1</option>
-            <option value="bo3">BO3</option>
-            <option value="bo5">BO5</option>
-          </select>
-        </label>
         <label>轮数
           <input id="roundCount" type="number" min="1" max="9" value="3" />
         </label>
-        <label>出线队伍数量
-          <input id="qualifiedCount" type="number" min="1" max="32" value="4" />
-        </label>
       </div>
-      <label>参赛队伍命名（每行一个，留空自动补全）
-        <textarea id="teamNames" rows="8" placeholder="Team A\nTeam B\n..."></textarea>
-      </label>
       <button id="generateBtn" type="button">生成赛程</button>
     </section>
 
     <section class="panel">
-      <h2>首轮拖动排序（拖动后会自动重算）</h2>
-      <ul id="seedList" class="seed-list"></ul>
-    </section>
-
-    <section class="panel">
-      <h2>图形化对阵图</h2>
+      <h2>对阵表（首轮可直接设置对阵，后续自动计算）</h2>
       <div id="bracket" class="bracket"></div>
-    </section>
-
-    <section class="panel">
-      <h2>当前积分与出线区</h2>
-      <div id="standings"></div>
     </section>
   </main>
 

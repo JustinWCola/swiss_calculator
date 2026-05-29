@@ -1,28 +1,15 @@
 const dom = {
   teamCount: document.getElementById('teamCount'),
-  format: document.getElementById('format'),
   roundCount: document.getElementById('roundCount'),
-  qualifiedCount: document.getElementById('qualifiedCount'),
-  teamNames: document.getElementById('teamNames'),
   generateBtn: document.getElementById('generateBtn'),
-  seedList: document.getElementById('seedList'),
-  bracket: document.getElementById('bracket'),
-  standings: document.getElementById('standings')
+  bracket: document.getElementById('bracket')
 };
 
 const state = {
   teams: [],
   rounds: 3,
-  qualified: 4,
-  format: 'bo1',
-  firstRoundOrder: [],
-  firstRoundWinRates: {}
-};
-
-const defaultWinRate = () => {
-  if (state.format === 'bo3') return 60;
-  if (state.format === 'bo5') return 65;
-  return 55;
+  firstRoundPairs: [],
+  matchInputs: {}
 };
 
 function sanitizeConfig() {
@@ -34,193 +21,198 @@ function sanitizeConfig() {
   const roundCount = Math.min(9, Math.max(1, Number(dom.roundCount.value) || 3));
   dom.roundCount.value = String(roundCount);
 
-  let qualified = Math.min(teamCount, Math.max(1, Number(dom.qualifiedCount.value) || 4));
-  dom.qualifiedCount.value = String(qualified);
-
-  return { teamCount, roundCount, qualified };
+  return { teamCount, roundCount };
 }
 
-function readTeams(teamCount) {
-  const customNames = dom.teamNames.value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const teams = Array.from({ length: teamCount }, (_, index) => ({
+function createTeams(teamCount) {
+  return Array.from({ length: teamCount }, (_, index) => ({
     id: `T${index + 1}`,
-    name: customNames[index] || `队伍${index + 1}`,
-    wins: 0,
-    losses: 0,
-    opponentPoints: 0,
-    opponents: []
+    name: `队伍${index + 1}`
   }));
-
-  return teams;
 }
 
-function initializeTournament() {
-  const { teamCount, roundCount, qualified } = sanitizeConfig();
-  state.teams = readTeams(teamCount);
-  state.rounds = roundCount;
-  state.qualified = qualified;
-  state.format = dom.format.value;
-  state.firstRoundOrder = state.teams.map((team) => team.id);
-  state.firstRoundWinRates = {};
-  renderSeedList();
-  recalculateAndRender();
-}
-
-function renderSeedList() {
-  dom.seedList.innerHTML = '';
-  state.firstRoundOrder.forEach((id) => {
-    const team = state.teams.find((item) => item.id === id);
-    const li = document.createElement('li');
-    li.className = 'seed-item';
-    li.textContent = team?.name || id;
-    li.draggable = true;
-    li.dataset.teamId = id;
-
-    li.addEventListener('dragstart', () => li.classList.add('dragging'));
-    li.addEventListener('dragend', () => li.classList.remove('dragging'));
-
-    dom.seedList.appendChild(li);
-  });
-}
-
-function bindSeedDragDrop() {
-  dom.seedList.addEventListener('dragover', (event) => {
-    event.preventDefault();
-    const dragging = dom.seedList.querySelector('.dragging');
-    if (!dragging) return;
-
-    const siblings = [...dom.seedList.querySelectorAll('.seed-item:not(.dragging)')];
-    const nextSibling = siblings.find((sibling) => event.clientX <= sibling.offsetLeft + sibling.offsetWidth / 2);
-    dom.seedList.insertBefore(dragging, nextSibling || null);
-  });
-
-  dom.seedList.addEventListener('drop', () => {
-    state.firstRoundOrder = [...dom.seedList.querySelectorAll('.seed-item')].map((item) => item.dataset.teamId);
-    recalculateAndRender();
-  });
-}
-
-function cloneTeams() {
-  return state.teams.map((team) => ({ ...team, opponents: [...team.opponents] }));
-}
-
-function getTeamMap(teams) {
-  return Object.fromEntries(teams.map((team) => [team.id, team]));
-}
-
-function pairRound(teamIds) {
-  const matches = [];
-  for (let i = 0; i < teamIds.length; i += 2) {
-    if (teamIds[i + 1]) matches.push([teamIds[i], teamIds[i + 1]]);
-  }
-  return matches;
-}
-
-function sortForSwiss(teamList) {
-  return [...teamList].sort((a, b) => {
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    if (b.opponentPoints !== a.opponentPoints) return b.opponentPoints - a.opponentPoints;
-    return a.name.localeCompare(b.name, 'zh-CN');
-  });
-}
-
-function chooseSwissPairs(teamList) {
-  const sorted = sortForSwiss(teamList);
-  const used = new Set();
+function initializeFirstRoundPairs(teamIds) {
   const pairs = [];
-
-  for (let i = 0; i < sorted.length; i += 1) {
-    const teamA = sorted[i];
-    if (used.has(teamA.id)) continue;
-
-    let candidate = null;
-    for (let j = i + 1; j < sorted.length; j += 1) {
-      const teamB = sorted[j];
-      if (used.has(teamB.id)) continue;
-      if (!teamA.opponents.includes(teamB.id)) {
-        candidate = teamB;
-        break;
-      }
-      if (!candidate) candidate = teamB;
-    }
-
-    if (candidate) {
-      used.add(teamA.id);
-      used.add(candidate.id);
-      pairs.push([teamA.id, candidate.id]);
-    }
+  for (let i = 0; i < teamIds.length; i += 2) {
+    pairs.push([teamIds[i], teamIds[i + 1]]);
   }
-
   return pairs;
 }
 
-function updateResult(teamMap, leftId, rightId, leftWinRate) {
-  const left = teamMap[leftId];
-  const right = teamMap[rightId];
-  const leftWins = leftWinRate >= 50;
-
-  left.opponents.push(right.id);
-  right.opponents.push(left.id);
-
-  if (leftWins) {
-    left.wins += 1;
-    right.losses += 1;
-  } else {
-    right.wins += 1;
-    left.losses += 1;
-  }
+function initializeTournament() {
+  const { teamCount, roundCount } = sanitizeConfig();
+  state.teams = createTeams(teamCount);
+  state.rounds = roundCount;
+  state.firstRoundPairs = initializeFirstRoundPairs(state.teams.map((team) => team.id));
+  state.matchInputs = {};
+  recalculateAndRender();
 }
 
-function recomputeOpponentPoints(teams, teamMap) {
-  teams.forEach((team) => {
+function createStatsMap() {
+  return Object.fromEntries(state.teams.map((team) => [team.id, {
+    id: team.id,
+    name: team.name,
+    scoreWins: 0,
+    scoreLosses: 0,
+    evalPoints: 0,
+    opponentPoints: 0,
+    opponents: []
+  }]));
+}
+
+function sanitizeFirstRoundPairs() {
+  const allIds = state.teams.map((team) => team.id);
+  const used = new Set();
+  const cleaned = [];
+
+  state.firstRoundPairs.forEach((pair) => {
+    const left = allIds.includes(pair[0]) && !used.has(pair[0]) ? pair[0] : null;
+    const right = allIds.includes(pair[1]) && !used.has(pair[1]) && pair[1] !== left ? pair[1] : null;
+
+    if (left) used.add(left);
+    if (right) used.add(right);
+    cleaned.push([left, right]);
+  });
+
+  const remain = allIds.filter((id) => !used.has(id));
+  cleaned.forEach((pair) => {
+    if (!pair[0]) pair[0] = remain.shift();
+    if (!pair[1]) pair[1] = remain.shift();
+  });
+
+  return cleaned;
+}
+
+function recomputeOpponentPoints(statsMap) {
+  Object.values(statsMap).forEach((team) => {
     team.opponentPoints = team.opponents.reduce((sum, opponentId) => {
-      const opponent = teamMap[opponentId];
-      return sum + (opponent?.wins || 0);
+      const opponent = statsMap[opponentId];
+      return sum + ((opponent?.scoreWins || 0) - (opponent?.scoreLosses || 0));
     }, 0);
   });
 }
 
-function pairingConfidence(teamA, teamB, pool) {
-  const distance = Math.abs(teamA.opponentPoints - teamB.opponentPoints) + Math.abs(teamA.wins - teamB.wins) * 2;
-  const weight = 1 / (1 + distance);
-  const baseline = pool.reduce((sum, candidate) => {
-    const d = Math.abs(teamA.opponentPoints - candidate.opponentPoints) + Math.abs(teamA.wins - candidate.wins) * 2;
-    return sum + 1 / (1 + d);
-  }, 0);
-  return Math.round((weight / (baseline || 1)) * 100);
+function rankingBySwiss(statsMap) {
+  return [...state.teams]
+    .map((team) => statsMap[team.id])
+    .sort((a, b) => {
+      if (b.opponentPoints !== a.opponentPoints) return b.opponentPoints - a.opponentPoints;
+      if (b.evalPoints !== a.evalPoints) return b.evalPoints - a.evalPoints;
+      return a.name.localeCompare(b.name, 'zh-CN');
+    });
+}
+
+function pairByRanking(statsMap) {
+  const sorted = rankingBySwiss(statsMap);
+  const pairs = [];
+  for (let i = 0; i < sorted.length; i += 2) {
+    if (sorted[i + 1]) pairs.push([sorted[i].id, sorted[i + 1].id]);
+  }
+  return pairs;
+}
+
+function readMatchInput(roundIndex, matchIndex) {
+  const key = `r${roundIndex}-m${matchIndex}`;
+  const existing = state.matchInputs[key];
+  if (existing) return { ...existing, key };
+  return {
+    key,
+    leftScore: 0,
+    rightScore: 0,
+    leftEval: 0,
+    rightEval: 0
+  };
+}
+
+function applyMatchResult(statsMap, leftId, rightId, input) {
+  const left = statsMap[leftId];
+  const right = statsMap[rightId];
+  if (!left || !right) return;
+
+  left.scoreWins += input.leftScore;
+  left.scoreLosses += input.rightScore;
+  right.scoreWins += input.rightScore;
+  right.scoreLosses += input.leftScore;
+
+  left.evalPoints += input.leftEval;
+  right.evalPoints += input.rightEval;
+
+  left.opponents.push(right.id);
+  right.opponents.push(left.id);
 }
 
 function buildRounds() {
-  const teams = cloneTeams();
-  const teamMap = getTeamMap(teams);
+  const statsMap = createStatsMap();
   const rounds = [];
+  const firstRoundPairs = sanitizeFirstRoundPairs();
 
   for (let roundIndex = 0; roundIndex < state.rounds; roundIndex += 1) {
-    const pairs = roundIndex === 0
-      ? pairRound(state.firstRoundOrder)
-      : chooseSwissPairs(teams);
+    const pairs = roundIndex === 0 ? firstRoundPairs : pairByRanking(statsMap);
 
-    const roundMatches = pairs.map(([leftId, rightId], matchIndex) => {
-      const key = `r${roundIndex}-m${matchIndex}-${leftId}-${rightId}`;
-      const winRate = state.firstRoundWinRates[key] ?? defaultWinRate();
-      updateResult(teamMap, leftId, rightId, winRate);
-      return { leftId, rightId, key, winRate };
+    const matches = pairs.map(([leftId, rightId], matchIndex) => {
+      const input = readMatchInput(roundIndex, matchIndex);
+      applyMatchResult(statsMap, leftId, rightId, input);
+      return { leftId, rightId, ...input };
     });
 
-    recomputeOpponentPoints(teams, teamMap);
+    recomputeOpponentPoints(statsMap);
 
     rounds.push({
       index: roundIndex + 1,
-      matches: roundMatches,
-      standings: sortForSwiss(teams).map((t) => ({ ...t, opponents: [...t.opponents] }))
+      matches
     });
   }
 
-  return { rounds, finalStandings: sortForSwiss(teams) };
+  state.firstRoundPairs = firstRoundPairs;
+  return rounds;
+}
+
+function updateFirstRoundTeam(matchIndex, side, teamId) {
+  const current = state.firstRoundPairs[matchIndex];
+  if (!current) return;
+  const next = [...current];
+  next[side] = teamId;
+  state.firstRoundPairs[matchIndex] = next;
+  recalculateAndRender();
+}
+
+function updateMatchInput(key, field, value) {
+  const current = state.matchInputs[key] || {
+    leftScore: 0,
+    rightScore: 0,
+    leftEval: 0,
+    rightEval: 0
+  };
+  state.matchInputs[key] = {
+    ...current,
+    [field]: Math.max(0, Number(value) || 0)
+  };
+  recalculateAndRender();
+}
+
+function createTeamInput(roundIndex, matchIndex, side, selectedId) {
+  const select = document.createElement('select');
+  state.teams.forEach((team) => {
+    const option = document.createElement('option');
+    option.value = team.id;
+    option.textContent = team.name;
+    if (team.id === selectedId) option.selected = true;
+    select.appendChild(option);
+  });
+  select.addEventListener('change', () => {
+    updateFirstRoundTeam(matchIndex, side, select.value);
+  });
+  return select;
+}
+
+function createValueInput(value, onChange) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.step = '1';
+  input.value = String(value);
+  input.addEventListener('change', onChange);
+  return input;
 }
 
 function renderRounds(rounds) {
@@ -228,54 +220,56 @@ function renderRounds(rounds) {
   const nameMap = Object.fromEntries(state.teams.map((team) => [team.id, team.name]));
 
   rounds.forEach((round, roundIndex) => {
-    const standingMap = Object.fromEntries(round.standings.map((team) => [team.id, team]));
-    const column = document.createElement('div');
+    const column = document.createElement('section');
     column.className = 'round-col';
+
     const title = document.createElement('h3');
     title.textContent = `第 ${round.index} 轮`;
     column.appendChild(title);
 
-    round.matches.forEach((match) => {
-      const leftName = nameMap[match.leftId];
-      const rightName = nameMap[match.rightId];
+    const hint = document.createElement('div');
+    hint.className = 'round-hint';
+    hint.textContent = roundIndex === 0
+      ? '在本列直接设置首轮对阵，再填写比分与评价分'
+      : '本轮对阵按上一轮后“对手分＞评价分”排序自动生成';
+    column.appendChild(hint);
+
+    round.matches.forEach((match, matchIndex) => {
       const card = document.createElement('article');
       card.className = 'match';
 
-      const teams = document.createElement('div');
-      teams.className = 'teams';
-      teams.innerHTML = `<span>${leftName}</span><span>vs</span><span>${rightName}</span>`;
-      card.appendChild(teams);
+      const head = document.createElement('div');
+      head.className = 'match-head';
+      head.textContent = `对局 ${matchIndex + 1}（名称 / 比分 / 评价分）`;
+      card.appendChild(head);
 
-      const score = document.createElement('label');
-      score.textContent = `${leftName} 胜率：${match.winRate}%`;
-      const input = document.createElement('input');
-      input.type = 'range';
-      input.min = '0';
-      input.max = '100';
-      input.value = String(match.winRate);
+      [['left', match.leftId], ['right', match.rightId]].forEach(([side, teamId]) => {
+        const row = document.createElement('div');
+        row.className = 'team-row';
 
-      input.addEventListener('input', () => {
-        score.firstChild.textContent = `${leftName} 胜率：${input.value}%`;
+        const teamField = roundIndex === 0
+          ? createTeamInput(roundIndex, matchIndex, side === 'left' ? 0 : 1, teamId)
+          : (() => {
+              const label = document.createElement('div');
+              label.className = 'team-label';
+              label.textContent = nameMap[teamId] || teamId;
+              return label;
+            })();
+        row.appendChild(teamField);
+
+        const scoreField = side === 'left' ? 'leftScore' : 'rightScore';
+        const evalField = side === 'left' ? 'leftEval' : 'rightEval';
+        const scoreInput = createValueInput(match[scoreField], () => {
+          updateMatchInput(match.key, scoreField, scoreInput.value);
+        });
+        const evalInput = createValueInput(match[evalField], () => {
+          updateMatchInput(match.key, evalField, evalInput.value);
+        });
+
+        row.appendChild(scoreInput);
+        row.appendChild(evalInput);
+        card.appendChild(row);
       });
-
-      input.addEventListener('change', () => {
-        state.firstRoundWinRates[match.key] = Number(input.value);
-        recalculateAndRender();
-      });
-
-      score.appendChild(input);
-      card.appendChild(score);
-
-      if (roundIndex > 0) {
-        const left = standingMap[match.leftId];
-        const right = standingMap[match.rightId];
-        const pool = round.standings.filter((team) => team.id !== left.id && team.id !== right.id);
-        const confidence = pairingConfidence(left, right, pool.concat([right]));
-        const probability = document.createElement('div');
-        probability.className = 'probability';
-        probability.textContent = `对阵概率（基于战绩+对手分）：${confidence}%`;
-        card.appendChild(probability);
-      }
 
       column.appendChild(card);
     });
@@ -284,41 +278,10 @@ function renderRounds(rounds) {
   });
 }
 
-function renderStandings(finalStandings) {
-  const tableRows = finalStandings.map((team, index) => `
-    <tr class="${index < state.qualified ? 'qualify' : ''}">
-      <td>${index + 1}</td>
-      <td>${team.name}</td>
-      <td>${team.wins}</td>
-      <td>${team.losses}</td>
-      <td>${team.opponentPoints}</td>
-      <td>${index < state.qualified ? '出线' : '-'}</td>
-    </tr>
-  `).join('');
-
-  dom.standings.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>排名</th>
-          <th>队伍</th>
-          <th>胜</th>
-          <th>负</th>
-          <th>对手分</th>
-          <th>状态</th>
-        </tr>
-      </thead>
-      <tbody>${tableRows}</tbody>
-    </table>
-  `;
-}
-
 function recalculateAndRender() {
-  const { rounds, finalStandings } = buildRounds();
+  const rounds = buildRounds();
   renderRounds(rounds);
-  renderStandings(finalStandings);
 }
 
 dom.generateBtn.addEventListener('click', initializeTournament);
-bindSeedDragDrop();
 initializeTournament();
