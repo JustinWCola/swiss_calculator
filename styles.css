@@ -10,7 +10,7 @@ body {
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -41,7 +41,7 @@ label {
   font-size: 14px;
 }
 
-input, select, textarea, button {
+input, select, button {
   font: inherit;
   border: 1px solid #c6ccde;
   border-radius: 8px;
@@ -56,31 +56,14 @@ button {
   margin-top: 10px;
 }
 
-.seed-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-}
-
-.seed-item {
-  background: #f0f3ff;
-  border: 1px solid #c9d3ff;
-  border-radius: 8px;
-  padding: 8px;
-  text-align: center;
-}
-
-.seed-item.dragging {
-  opacity: 0.5;
-}
-
 .bracket {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 1fr);
+  gap: 16px;
+  overflow-x: auto;
+  align-items: start;
+  padding-bottom: 4px;
 }
 
 .round-col {
@@ -93,35 +76,39 @@ button {
 .match {
   border: 1px solid #dbe1f7;
   border-radius: 8px;
-  padding: 8px;
+  padding: 10px;
   background: #fff;
   margin-bottom: 10px;
 }
 
-.teams {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
+.team-row {
+  display: grid;
+  grid-template-columns: 1fr 64px 64px;
+  gap: 6px;
+  align-items: center;
   margin-bottom: 6px;
 }
 
-.probability {
-  font-size: 12px;
-  color: #3c4b85;
-}
-
-table {
+.team-row input,
+.team-row select {
   width: 100%;
-  border-collapse: collapse;
-}
-
-th, td {
-  border-bottom: 1px solid #e6e8f2;
   padding: 6px;
-  text-align: left;
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.qualify {
-  background: #eefaf1;
+.round-hint {
+  font-size: 12px;
+  color: #4d5a8f;
+  margin-bottom: 10px;
+}
+
+.team-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.match-head {
+  font-size: 12px;
+  color: #5a638a;
+  margin-bottom: 8px;
 }
