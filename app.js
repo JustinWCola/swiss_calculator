@@ -299,11 +299,11 @@ function pairByScoreGroups(statsMap, matchesPlayed) {
   const sortWithinGroup = (ids) => ids.sort((a, b) => {
     const A = statsMap[a];
     const B = statsMap[b];
+    if ((B.opponentPoints || 0) !== (A.opponentPoints || 0)) return (B.opponentPoints || 0) - (A.opponentPoints || 0);
+    if ((B.evalPoints || 0) !== (A.evalPoints || 0)) return (B.evalPoints || 0) - (A.evalPoints || 0);
     const scoreDiffA = (Number(A.scoreWins) || 0) - (Number(A.scoreLosses) || 0);
     const scoreDiffB = (Number(B.scoreWins) || 0) - (Number(B.scoreLosses) || 0);
     if (scoreDiffB !== scoreDiffA) return scoreDiffB - scoreDiffA;
-    if ((B.opponentPoints || 0) !== (A.opponentPoints || 0)) return (B.opponentPoints || 0) - (A.opponentPoints || 0);
-    if ((B.evalPoints || 0) !== (A.evalPoints || 0)) return (B.evalPoints || 0) - (A.evalPoints || 0);
     return (A.name || a).localeCompare(B.name || b, 'zh-CN');
   });
 
