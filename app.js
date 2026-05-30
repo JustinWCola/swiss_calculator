@@ -353,9 +353,25 @@ function updateMatchInput(key, field, value) {
     leftEval: 0,
     rightEval: 0
   };
-  state.matchInputs[key] = {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
+  const nextValue = field === 'leftScore' || field === 'rightScore'
+    ? Math.max(0, safeValue)
+    : safeValue;
+
+  const nextInput = {
     ...current,
-    [field]: Math.max(0, Number(value) || 0)
+    [field]: nextValue
+  };
+
+  if (field === 'leftEval') {
+    nextInput.rightEval = -nextValue;
+  } else if (field === 'rightEval') {
+    nextInput.leftEval = -nextValue;
+  }
+
+  state.matchInputs[key] = {
+    ...nextInput
   };
   recalculateAndRender();
 }
@@ -373,11 +389,11 @@ function createFirstRoundTeamNameInput(teamId) {
   return input;
 }
 
-function createValueInput(value, onChange) {
+function createValueInput(value, onChange, options = {}) {
   const input = document.createElement('input');
   input.type = 'number';
-  input.min = '0';
-  input.step = '1';
+  if (options.min !== undefined) input.min = String(options.min);
+  if (options.step !== undefined) input.step = String(options.step);
   input.value = String(value);
   input.addEventListener('change', onChange);
   return input;
@@ -453,10 +469,10 @@ function renderRounds(rounds) {
           const evalField = side === 'left' ? 'leftEval' : 'rightEval';
           const scoreInput = createValueInput(match[scoreField], () => {
             updateMatchInput(match.key, scoreField, scoreInput.value);
-          });
+          }, { min: 0, step: 1 });
           const evalInput = createValueInput(match[evalField], () => {
             updateMatchInput(match.key, evalField, evalInput.value);
-          });
+          }, { step: 'any' });
 
           scoreInput.title = '比分';
           evalInput.title = '评价分';
