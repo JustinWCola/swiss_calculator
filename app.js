@@ -268,7 +268,13 @@ function rankingBySwiss(statsMap) {
   return [...state.teams]
     .map((team) => statsMap[team.id])
     .sort((a, b) => {
+      // 优先按胜场数-败场数排序
+      const aWinLoss = (b.matchWins || 0) - (b.matchLosses || 0);
+      const bWinLoss = (a.matchWins || 0) - (a.matchLosses || 0);
+      if (aWinLoss !== bWinLoss) return aWinLoss - bWinLoss;
+      // 同胜场数再比较对手分
       if (b.opponentPoints !== a.opponentPoints) return b.opponentPoints - a.opponentPoints;
+      // 再比较评价分
       if (b.evalPoints !== a.evalPoints) return b.evalPoints - a.evalPoints;
       return a.name.localeCompare(b.name, 'zh-CN');
     });
@@ -428,22 +434,23 @@ function renderRankingTable(statsMap) {
   const teams = Object.values(statsMap || {});
   const ranked = teams
     .map((t) => {
-      const scoreDiff = (Number(t.scoreWins) || 0) - (Number(t.scoreLosses) || 0);
+      const matchWinLoss = (Number(t.matchWins) || 0) - (Number(t.matchLosses) || 0);
       return {
         id: t.id,
         name: t.name || t.id,
-        scoreWins: Number(t.scoreWins) || 0,
-        scoreLosses: Number(t.scoreLosses) || 0,
-        scoreDiff,
+        matchWins: Number(t.matchWins) || 0,
+        matchLosses: Number(t.matchLosses) || 0,
+        matchWinLoss,
         opponentPoints: Number(t.opponentPoints) || 0,
-        evalPoints: Number(t.evalPoints) || 0,
-        matchWins: Number(t.matchWins) || 0
+        evalPoints: Number(t.evalPoints) || 0
       };
     })
     .sort((a, b) => {
-      if (b.matchWins !== a.matchWins) return b.matchWins - a.matchWins;
-      if (b.scoreDiff !== a.scoreDiff) return b.scoreDiff - a.scoreDiff;
+      // 优先按胜场数-败场数排序
+      if (b.matchWinLoss !== a.matchWinLoss) return b.matchWinLoss - a.matchWinLoss;
+      // 同胜场数再比较对手分
       if (b.opponentPoints !== a.opponentPoints) return b.opponentPoints - a.opponentPoints;
+      // 再比较评价分
       if (b.evalPoints !== a.evalPoints) return b.evalPoints - a.evalPoints;
       return a.name.localeCompare(b.name, 'zh-CN');
     });
@@ -455,7 +462,7 @@ function renderRankingTable(statsMap) {
       <tr>
         <th style="width: 56px;">排名</th>
         <th>队伍</th>
-        <th style="width: 90px;">比分</th>
+        <th style="width: 90px;">战绩</th>
         <th style="width: 90px;">对手分</th>
         <th style="width: 90px;">评价分</th>
       </tr>
@@ -469,7 +476,7 @@ function renderRankingTable(statsMap) {
     tr.innerHTML = `
       <td>${index + 1}</td>
       <td>${row.name}</td>
-      <td>${row.scoreWins}-${row.scoreLosses}</td>
+      <td>${row.matchWins}-${row.matchLosses}</td>
       <td>${row.opponentPoints}</td>
       <td>${row.evalPoints}</td>
     `;
@@ -585,7 +592,7 @@ function renderRounds(rounds) {
 
         const cols = document.createElement('div');
         cols.className = 'match-cols';
-        cols.innerHTML = '<div>队伍</div><div>比分</div><div>评价</div>';
+        cols.innerHTML = '<div>队伍</div><div>比分</div><div>评分</div>';
         card.appendChild(cols);
 
         const leftScoreNum = Number(match.leftScore) || 0;
