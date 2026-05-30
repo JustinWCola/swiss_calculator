@@ -2,6 +2,9 @@ const dom = {
   teamCount: document.getElementById('teamCount'),
   roundCount: document.getElementById('roundCount'),
   generateBtn: document.getElementById('generateBtn'),
+  exportBtn: document.getElementById('exportBtn'),
+  importBtn: document.getElementById('importBtn'),
+  importFileInput: document.getElementById('importFileInput'),
   bracket: document.getElementById('bracket'),
   generationMeta: document.getElementById('generationMeta'),
   ranking: document.getElementById('ranking')
@@ -59,6 +62,155 @@ function initializeTournament() {
   state.matchInputs = {};
   state.generatedAt = new Date();
   recalculateAndRender();
+}
+
+function sanitizeRoundCount(value) {
+  return Math.min(9, Math.max(1, Number(value) || 3));
+}
+
+function sanitizeTeamCount(value) {
+  let teamCount = Number(value) || 8;
+  if (teamCount % 2 === 1) teamCount += 1;
+  return Math.min(64, Math.max(2, teamCount));
+}
+
+function sanitizeTeamName(value, fallback) {
+  const safeName = String(value ?? '').trim();
+  return safeName || fallback;
+}
+
+function sanitizeMatchInputObject(input) {
+  return {
+    leftScore: Math.max(0, Number(input?.leftScore) || 0),
+    rightScore: Math.max(0, Number(input?.rightScore) || 0),
+    leftEval: Math.max(0, Number(input?.leftEval) || 0),
+    rightEval: Math.max(0, Number(input?.rightEval) || 0)
+  };
+}
+
+function createExportPayload() {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: {
+      teamCount: state.teams.length,
+      roundCount: state.rounds
+    },
+    teams: state.teams.map((team) => ({ id: team.id, name: team.name })),
+    firstRoundPairs: state.firstRoundPairs.map((pair) => [pair[0], pair[1]]),
+    matchInputs: Object.fromEntries(
+      Object.entries(state.matchInputs).map(([key, value]) => [key, sanitizeMatchInputObject(value)])
+    )
+  };
+}
+
+function downloadJsonFile(data, filename) {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportTournamentData() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const filename = `swiss-calculator-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`;
+  downloadJsonFile(createExportPayload(), filename);
+}
+
+function normalizeImportedData(rawData) {
+  if (!rawData || typeof rawData !== 'object') {
+    throw new Error('无效文件：未找到可导入的数据。');
+  }
+
+  const importedTeams = Array.isArray(rawData.teams) ? rawData.teams : [];
+  const teamsBaseCount = importedTeams.length || rawData.settings?.teamCount || rawData.teamCount;
+  const teamCount = sanitizeTeamCount(teamsBaseCount);
+  const roundCount = sanitizeRoundCount(rawData.settings?.roundCount ?? rawData.roundCount);
+
+  if (importedTeams.length && importedTeams.length < 2) {
+    throw new Error('无效文件：队伍数量至少为 2。');
+  }
+
+  const teams = Array.from({ length: teamCount }, (_, index) => {
+    const fallback = `队伍${index + 1}`;
+    const imported = importedTeams[index];
+    return {
+      id: `T${index + 1}`,
+      name: sanitizeTeamName(imported?.name, fallback)
+    };
+  });
+
+  const oldToNewIdMap = new Map();
+  importedTeams.forEach((team, index) => {
+    const newId = teams[index]?.id;
+    if (!newId) return;
+    const oldId = String(team?.id || `T${index + 1}`);
+    oldToNewIdMap.set(oldId, newId);
+  });
+  teams.forEach((team) => {
+    oldToNewIdMap.set(team.id, team.id);
+  });
+
+  const rawPairs = Array.isArray(rawData.firstRoundPairs) ? rawData.firstRoundPairs : [];
+  const defaultPairs = initializeFirstRoundPairs(teams.map((team) => team.id));
+  const firstRoundPairs = defaultPairs.map((pair, index) => {
+    const importedPair = Array.isArray(rawPairs[index]) ? rawPairs[index] : [];
+    const left = oldToNewIdMap.get(String(importedPair[0] ?? '')) || pair[0];
+    const right = oldToNewIdMap.get(String(importedPair[1] ?? '')) || pair[1];
+    return [left, right];
+  });
+
+  const matchInputs = {};
+  if (rawData.matchInputs && typeof rawData.matchInputs === 'object') {
+    Object.entries(rawData.matchInputs).forEach(([key, value]) => {
+      if (!/^r\d+-m\d+$/.test(key)) return;
+      const match = key.match(/^r(\d+)-m\d+$/);
+      if (!match) return;
+      const roundIndex = Number(match[1]);
+      if (!Number.isFinite(roundIndex) || roundIndex < 0 || roundIndex >= roundCount) return;
+      matchInputs[key] = sanitizeMatchInputObject(value);
+    });
+  }
+
+  return { teamCount, roundCount, teams, firstRoundPairs, matchInputs };
+}
+
+function importTournamentData(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      const raw = JSON.parse(text);
+      const parsed = normalizeImportedData(raw);
+
+      dom.teamCount.value = String(parsed.teamCount);
+      dom.roundCount.value = String(parsed.roundCount);
+      state.teams = parsed.teams;
+      state.rounds = parsed.roundCount;
+      state.firstRoundPairs = parsed.firstRoundPairs;
+      state.matchInputs = parsed.matchInputs;
+      state.generatedAt = new Date();
+      recalculateAndRender();
+      alert('导入成功。');
+    } catch (error) {
+      alert(error?.message || '导入失败，请检查文件格式。');
+    } finally {
+      if (dom.importFileInput) dom.importFileInput.value = '';
+    }
+  };
+  reader.onerror = () => {
+    alert('读取文件失败，请重试。');
+    if (dom.importFileInput) dom.importFileInput.value = '';
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 function createStatsMap() {
@@ -507,4 +659,16 @@ function recalculateAndRender() {
 }
 
 dom.generateBtn.addEventListener('click', initializeTournament);
+if (dom.exportBtn) {
+  dom.exportBtn.addEventListener('click', exportTournamentData);
+}
+if (dom.importBtn && dom.importFileInput) {
+  dom.importBtn.addEventListener('click', () => {
+    dom.importFileInput.click();
+  });
+  dom.importFileInput.addEventListener('change', () => {
+    const file = dom.importFileInput.files?.[0];
+    importTournamentData(file);
+  });
+}
 initializeTournament();
