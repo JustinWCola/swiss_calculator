@@ -155,7 +155,7 @@ h1 {
 }
 
 .panel--settings input {
-  width: 130px;
+  width: 96px;
 }
 
 .panel--settings button {
@@ -417,6 +417,23 @@ button:focus-visible {
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
+}
+
+/* 晋级 / 淘汰 行样式 */
+.ranking-table td:last-child {
+  text-align: left;
+}
+
+.ranking-table tr.promote td,
+.ranking-table tr.promote .team-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.ranking-table tr.eliminate td,
+.ranking-table tr.eliminate .team-label {
+  color: var(--muted);
+  opacity: 0.9;
 }
 
 .match-head {

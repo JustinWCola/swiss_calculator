@@ -26,14 +26,17 @@
         <h2>赛事设置</h2>
         <div class="settings-controls">
           <label>队伍数量
-            <input id="teamCount" type="number" min="2" max="64" step="2" value="8" />
+            <input id="teamCount" type="number" min="2" max="64" step="2" value="16" />
           </label>
-          <label>轮数
-            <input id="roundCount" type="number" min="1" max="9" value="3" />
+          <label>总轮次数
+            <input id="roundCount" type="number" min="1" max="9" value="5" />
+          </label>
+          <label>晋级/淘汰线
+            <input id="cutoff" type="number" min="0" step="1" value="3" />
           </label>
           <button id="generateBtn" type="button">生成赛程</button>
-          <button id="exportBtn" class="btn-secondary" type="button">导出数据</button>
-          <button id="importBtn" class="btn-secondary" type="button">导入数据</button>
+          <button id="exportBtn" class="btn-secondary" type="button">导出</button>
+          <button id="importBtn" class="btn-secondary" type="button">导入</button>
           <input id="importFileInput" type="file" accept=".json,application/json" hidden />
         </div>
       </div>

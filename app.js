@@ -1,6 +1,7 @@
 const dom = {
   teamCount: document.getElementById('teamCount'),
   roundCount: document.getElementById('roundCount'),
+  cutoff: document.getElementById('cutoff'),
   generateBtn: document.getElementById('generateBtn'),
   exportBtn: document.getElementById('exportBtn'),
   importBtn: document.getElementById('importBtn'),
@@ -36,7 +37,12 @@ function sanitizeConfig() {
   const roundCount = Math.min(9, Math.max(1, Number(dom.roundCount.value) || 3));
   dom.roundCount.value = String(roundCount);
 
-  return { teamCount, roundCount };
+  // 读取并校验统一阈值（N 胜晋级 / N 败淘汰）
+  const rawCutoff = Number(dom.cutoff?.value ?? 0) || 0;
+  const cutoff = Math.max(0, Math.floor(rawCutoff));
+  if (dom.cutoff) dom.cutoff.value = String(cutoff);
+
+  return { teamCount, roundCount, cutoff };
 }
 
 function createTeams(teamCount) {
@@ -55,7 +61,7 @@ function initializeFirstRoundPairs(teamIds) {
 }
 
 function initializeTournament() {
-  const { teamCount, roundCount } = sanitizeConfig();
+  const { teamCount, roundCount, cutoff } = sanitizeConfig();
   state.teams = createTeams(teamCount);
   state.rounds = roundCount;
   state.firstRoundPairs = initializeFirstRoundPairs(shuffleArray(state.teams.map((team) => team.id)));
@@ -65,11 +71,11 @@ function initializeTournament() {
 }
 
 function sanitizeRoundCount(value) {
-  return Math.min(9, Math.max(1, Number(value) || 3));
+  return Math.min(9, Math.max(1, Number(value) || 5));
 }
 
 function sanitizeTeamCount(value) {
-  let teamCount = Number(value) || 8;
+  let teamCount = Number(value) || 16;
   if (teamCount % 2 === 1) teamCount += 1;
   return Math.min(64, Math.max(2, teamCount));
 }
@@ -103,7 +109,8 @@ function createExportPayload() {
     exportedAt: new Date().toISOString(),
     settings: {
       teamCount: state.teams.length,
-      roundCount: state.rounds
+      roundCount: state.rounds,
+      cutoff: Number(dom.cutoff?.value ?? 0) || 0
     },
     teams: state.teams.map((team) => ({ id: team.id, name: team.name })),
     firstRoundPairs: state.firstRoundPairs.map((pair) => [pair[0], pair[1]]),
@@ -188,7 +195,11 @@ function normalizeImportedData(rawData) {
     });
   }
 
-  return { teamCount, roundCount, teams, firstRoundPairs, matchInputs };
+  // 读取并规范化统一阈值（cutoff），兼容历史字段
+  const cutoffRaw = Number(rawData.settings?.cutoff ?? rawData.cutoff ?? rawData.settings?.advanceCutoff ?? rawData.advanceCutoff ?? 0) || 0;
+  const cutoff = Math.max(0, Math.floor(cutoffRaw));
+
+  return { teamCount, roundCount, teams, firstRoundPairs, matchInputs, cutoff };
 }
 
 function importTournamentData(file) {
@@ -202,6 +213,7 @@ function importTournamentData(file) {
 
       dom.teamCount.value = String(parsed.teamCount);
       dom.roundCount.value = String(parsed.roundCount);
+      if (dom.cutoff) dom.cutoff.value = String(parsed.cutoff ?? 0);
       state.teams = parsed.teams;
       state.rounds = parsed.roundCount;
       state.firstRoundPairs = parsed.firstRoundPairs;
@@ -402,6 +414,8 @@ function buildRounds() {
   const statsMap = createStatsMap();
   const rounds = [];
   const firstRoundPairs = sanitizeFirstRoundPairs();
+  const promotedIds = new Set();
+  const eliminatedIds = new Set();
 
   for (let roundIndex = 0; roundIndex < state.rounds; roundIndex += 1) {
     if (roundIndex === 0) {
@@ -411,10 +425,20 @@ function buildRounds() {
         return { leftId, rightId, ...input };
       });
       recomputeOpponentPoints(statsMap);
+      // 第1轮后根据统一阈值（cutoff）将满足条件的队伍标记为已晋级或已淘汰
+      const cutoffVal = Math.max(0, Number(dom.cutoff?.value ?? 0) || 0);
+      Object.values(statsMap).forEach((t) => {
+        if (cutoffVal > 0 && (Number(t.matchWins) || 0) >= cutoffVal) promotedIds.add(t.id);
+        if (cutoffVal > 0 && (Number(t.matchLosses) || 0) >= cutoffVal) eliminatedIds.add(t.id);
+      });
       rounds.push({ index: roundIndex + 1, rows: [{ wins: 0, matches }] });
     } else {
       const targetRows = roundIndex + 0;
-      const rowsPairs = pairByScoreGroups(statsMap, roundIndex);
+      // 构建用于配对的临时 statsMap，排除已晋级的队伍
+      const filteredStatsMap = Object.fromEntries(
+        Object.entries(statsMap).filter(([id]) => !promotedIds.has(id) && !eliminatedIds.has(id))
+      );
+      const rowsPairs = pairByScoreGroups(filteredStatsMap, roundIndex);
       const rows = [];
       let matchCounter = 0;
       rowsPairs.forEach((rowObj) => {
@@ -428,6 +452,12 @@ function buildRounds() {
       });
 
       recomputeOpponentPoints(statsMap);
+      // 每轮结束后根据统一阈值（cutoff）更新集合
+      const cutoffVal = Math.max(0, Number(dom.cutoff?.value ?? 0) || 0);
+      Object.values(statsMap).forEach((t) => {
+        if (cutoffVal > 0 && (Number(t.matchWins) || 0) >= cutoffVal) promotedIds.add(t.id);
+        if (cutoffVal > 0 && (Number(t.matchLosses) || 0) >= cutoffVal) eliminatedIds.add(t.id);
+      });
       rounds.push({ index: roundIndex + 1, rows });
     }
   }
@@ -474,6 +504,7 @@ function renderRankingTable(statsMap) {
         <th style="width: 90px;">战绩</th>
         <th style="width: 90px;">对手分</th>
         <th style="width: 90px;">评价分</th>
+        <th style="width: 90px;">状态</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -482,12 +513,24 @@ function renderRankingTable(statsMap) {
   const tbody = table.querySelector('tbody');
   ranked.forEach((row, index) => {
     const tr = document.createElement('tr');
+    // 计算晋级/淘汰状态：基于统一阈值（cutoff）
+    const cutoffVal = Math.max(0, Number(dom.cutoff?.value ?? 0) || 0);
+    let status = '';
+    if (cutoffVal > 0 && (row.matchWins || 0) >= cutoffVal) {
+      status = '晋级';
+      tr.classList.add('promote');
+    } else if (cutoffVal > 0 && (row.matchLosses || 0) >= cutoffVal) {
+      status = '淘汰';
+      tr.classList.add('eliminate');
+    }
+
     tr.innerHTML = `
       <td>${index + 1}</td>
       <td>${row.name}</td>
       <td>${row.matchWins}-${row.matchLosses}</td>
       <td>${row.opponentPoints}</td>
       <td>${row.evalPoints}</td>
+      <td>${status}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -674,6 +717,32 @@ function recalculateAndRender() {
   }
 }
 
+function saveSettingsToStorage() {
+  try {
+    const payload = {
+      teamCount: Number(dom.teamCount?.value ?? 0) || 0,
+      roundCount: Number(dom.roundCount?.value ?? 0) || 0,
+      cutoff: Number(dom.cutoff?.value ?? 0) || 0
+    };
+    localStorage.setItem('swiss_calculator_settings_v1', JSON.stringify(payload));
+  } catch (e) {
+    // ignore storage errors
+  }
+}
+
+function loadSettingsFromStorage() {
+  try {
+    const raw = localStorage.getItem('swiss_calculator_settings_v1');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed.teamCount) dom.teamCount.value = String(parsed.teamCount);
+    if (parsed.roundCount) dom.roundCount.value = String(parsed.roundCount);
+    if (dom.cutoff && parsed.cutoff !== undefined) dom.cutoff.value = String(parsed.cutoff);
+  } catch (e) {
+    // ignore
+  }
+}
+
 dom.generateBtn.addEventListener('click', initializeTournament);
 if (dom.exportBtn) {
   dom.exportBtn.addEventListener('click', exportTournamentData);
@@ -687,4 +756,10 @@ if (dom.importBtn && dom.importFileInput) {
     importTournamentData(file);
   });
 }
+// 绑定设置保存与即时生效
+if (dom.cutoff) dom.cutoff.addEventListener('change', () => { saveSettingsToStorage(); recalculateAndRender(); });
+if (dom.teamCount) dom.teamCount.addEventListener('change', () => { saveSettingsToStorage(); });
+if (dom.roundCount) dom.roundCount.addEventListener('change', () => { saveSettingsToStorage(); });
+
+loadSettingsFromStorage();
 initializeTournament();
