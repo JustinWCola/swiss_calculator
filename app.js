@@ -625,6 +625,8 @@ function renderRounds(rounds) {
     const stacks = document.createElement('div');
     stacks.className = 'round-stacks';
     (round.rows || []).forEach((stackObj, stackIndex) => {
+      if (!Array.isArray(stackObj?.matches) || stackObj.matches.length === 0) return;
+
       const stack = document.createElement('div');
       stack.className = 'match-stack';
 
@@ -698,6 +700,8 @@ function renderRounds(rounds) {
 
       stacks.appendChild(stack);
     });
+
+    if (!stacks.childElementCount) return;
 
     column.appendChild(stacks);
 
