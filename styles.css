@@ -267,15 +267,69 @@ button:focus-visible {
   box-shadow: none;
 }
 
+.round-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 /* connector rails removed */
 .round-col::after,
 .round-col--linked::before {
   display: none;
 }
 
-.round-col>h3 {
+.round-col>h3,
+.round-header>h3 {
   font-size: 17px;
   letter-spacing: -0.02em;
+}
+
+.round-mode-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.round-mode-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 4px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.round-mode-option {
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.round-mode-option:hover {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.round-mode-option.is-active {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(255, 138, 91, 0.2);
+}
+
+.round-mode-option:focus-visible {
+  outline: 2px solid rgba(244, 184, 96, 0.65);
+  outline-offset: 2px;
 }
 
 .round-hint {

@@ -15,8 +15,16 @@ const state = {
   teams: [],
   rounds: 3,
   firstRoundPairs: [],
+  firstRoundSeedIds: [],
+  roundPairModes: [],
   matchInputs: {},
   generatedAt: null
+};
+
+const ROUND_PAIR_MODES = {
+  ORDER_PAIR: 'scoreOrder',
+  HEAD_TAIL_PAIR: 'headTail',
+  GROUP_PAIR: 'groupPair'
 };
 
 function shuffleArray(items) {
@@ -52,8 +60,25 @@ function createTeams(teamCount) {
   }));
 }
 
-function initializeFirstRoundPairs(teamIds) {
+function sanitizeRoundPairMode(value) {
+  if (value === ROUND_PAIR_MODES.HEAD_TAIL_PAIR) return ROUND_PAIR_MODES.HEAD_TAIL_PAIR;
+  if (value === ROUND_PAIR_MODES.GROUP_PAIR) return ROUND_PAIR_MODES.GROUP_PAIR;
+  return ROUND_PAIR_MODES.ORDER_PAIR;
+}
+
+function normalizeRoundPairModes(roundCount, sourceModes = []) {
+  return Array.from({ length: roundCount }, (_, index) => sanitizeRoundPairMode(sourceModes[index]));
+}
+
+function initializeFirstRoundPairs(teamIds, mode = ROUND_PAIR_MODES.ORDER_PAIR) {
   const pairs = [];
+  if (mode === ROUND_PAIR_MODES.HEAD_TAIL_PAIR) {
+    for (let i = 0; i < teamIds.length / 2; i += 1) {
+      pairs.push([teamIds[i], teamIds[teamIds.length - 1 - i]]);
+    }
+    return pairs;
+  }
+
   for (let i = 0; i < teamIds.length; i += 2) {
     pairs.push([teamIds[i], teamIds[i + 1]]);
   }
@@ -64,7 +89,9 @@ function initializeTournament() {
   const { teamCount, roundCount, cutoff } = sanitizeConfig();
   state.teams = createTeams(teamCount);
   state.rounds = roundCount;
-  state.firstRoundPairs = initializeFirstRoundPairs(shuffleArray(state.teams.map((team) => team.id)));
+  state.roundPairModes = normalizeRoundPairModes(roundCount, state.roundPairModes);
+  state.firstRoundSeedIds = shuffleArray(state.teams.map((team) => team.id));
+  state.firstRoundPairs = initializeFirstRoundPairs(state.firstRoundSeedIds, state.roundPairModes[0]);
   state.matchInputs = {};
   state.generatedAt = new Date();
   recalculateAndRender();
@@ -110,9 +137,11 @@ function createExportPayload() {
     settings: {
       teamCount: state.teams.length,
       roundCount: state.rounds,
-      cutoff: Number(dom.cutoff?.value ?? 0) || 0
+      cutoff: Number(dom.cutoff?.value ?? 0) || 0,
+      roundPairModes: [...state.roundPairModes]
     },
     teams: state.teams.map((team) => ({ id: team.id, name: team.name })),
+    firstRoundSeedIds: [...state.firstRoundSeedIds],
     firstRoundPairs: state.firstRoundPairs.map((pair) => [pair[0], pair[1]]),
     matchInputs: Object.fromEntries(
       Object.entries(state.matchInputs).map(([key, value]) => [key, sanitizeMatchInputObject(value)])
@@ -149,6 +178,10 @@ function normalizeImportedData(rawData) {
   const teamsBaseCount = importedTeams.length || rawData.settings?.teamCount || rawData.teamCount;
   const teamCount = sanitizeTeamCount(teamsBaseCount);
   const roundCount = sanitizeRoundCount(rawData.settings?.roundCount ?? rawData.roundCount);
+  const roundPairModes = normalizeRoundPairModes(
+    roundCount,
+    rawData.settings?.roundPairModes ?? rawData.roundPairModes
+  );
 
   if (importedTeams.length && importedTeams.length < 2) {
     throw new Error('无效文件：队伍数量至少为 2。');
@@ -183,6 +216,11 @@ function normalizeImportedData(rawData) {
     return [left, right];
   });
 
+  const rawSeedIds = Array.isArray(rawData.firstRoundSeedIds) ? rawData.firstRoundSeedIds : rawPairs.flat();
+  const firstRoundSeedIds = rawSeedIds
+    .map((id) => oldToNewIdMap.get(String(id)) || String(id))
+    .filter((id) => teams.some((team) => team.id === id));
+
   const matchInputs = {};
   if (rawData.matchInputs && typeof rawData.matchInputs === 'object') {
     Object.entries(rawData.matchInputs).forEach(([key, value]) => {
@@ -199,7 +237,7 @@ function normalizeImportedData(rawData) {
   const cutoffRaw = Number(rawData.settings?.cutoff ?? rawData.cutoff ?? rawData.settings?.advanceCutoff ?? rawData.advanceCutoff ?? 0) || 0;
   const cutoff = Math.max(0, Math.floor(cutoffRaw));
 
-  return { teamCount, roundCount, teams, firstRoundPairs, matchInputs, cutoff };
+  return { teamCount, roundCount, teams, firstRoundPairs, firstRoundSeedIds, matchInputs, cutoff, roundPairModes };
 }
 
 function importTournamentData(file) {
@@ -217,6 +255,8 @@ function importTournamentData(file) {
       state.teams = parsed.teams;
       state.rounds = parsed.roundCount;
       state.firstRoundPairs = parsed.firstRoundPairs;
+      state.firstRoundSeedIds = parsed.firstRoundSeedIds;
+      state.roundPairModes = normalizeRoundPairModes(parsed.roundCount, parsed.roundPairModes);
       state.matchInputs = parsed.matchInputs;
       state.generatedAt = new Date();
       recalculateAndRender();
@@ -310,7 +350,7 @@ function pairByRanking(statsMap) {
   return pairs;
 }
 
-function pairByScoreGroups(statsMap, matchesPlayed) {
+function pairByScoreGroups(statsMap, matchesPlayed, pairMode = ROUND_PAIR_MODES.ORDER_PAIR) {
   // 按胜场数分组（胜者打胜者、负者打负者），胜场相同再按：对手分 > 评价分
   // matchesPlayed: 进入本轮前已打的局数（第2轮=1，第3轮=2...）
   const maxWins = Math.max(0, Number(matchesPlayed) || 0);
@@ -349,11 +389,33 @@ function pairByScoreGroups(statsMap, matchesPlayed) {
   return groups.map((grp, idx) => {
     const wins = maxWins - idx;
     const pairs = [];
-    for (let i = 0; i < grp.length; i += 2) {
-      if (grp[i + 1]) pairs.push([grp[i], grp[i + 1]]);
+    if (pairMode === ROUND_PAIR_MODES.HEAD_TAIL_PAIR) {
+      for (let i = 0; i < Math.floor(grp.length / 2); i += 1) {
+        const rightIndex = grp.length - 1 - i;
+        if (grp[i] && grp[rightIndex]) pairs.push([grp[i], grp[rightIndex]]);
+      }
+    } else if (pairMode === ROUND_PAIR_MODES.GROUP_PAIR) {
+      const mid = Math.ceil(grp.length / 2);
+      const upperHalf = grp.slice(0, mid);
+      const lowerHalf = grp.slice(mid);
+      for (let i = 0; i < Math.min(upperHalf.length, lowerHalf.length); i += 1) {
+        if (upperHalf[i] && lowerHalf[i]) pairs.push([upperHalf[i], lowerHalf[i]]);
+      }
+    } else {
+      for (let i = 0; i < grp.length; i += 2) {
+        if (grp[i + 1]) pairs.push([grp[i], grp[i + 1]]);
+      }
     }
     return { wins, pairs };
   });
+}
+
+function buildFirstRoundPairs() {
+  const seedIds = state.firstRoundSeedIds.length ? state.firstRoundSeedIds : state.teams.map((team) => team.id);
+  const pairMode = state.roundPairModes[0] || ROUND_PAIR_MODES.ORDER_PAIR;
+  const pairs = initializeFirstRoundPairs(seedIds, pairMode);
+  state.firstRoundPairs = pairs;
+  return pairs;
 }
 
 function readMatchInput(roundIndex, matchIndex) {
@@ -413,7 +475,7 @@ function applyMatchResult(statsMap, leftId, rightId, input) {
 function buildRounds() {
   const statsMap = createStatsMap();
   const rounds = [];
-  const firstRoundPairs = sanitizeFirstRoundPairs();
+  const firstRoundPairs = buildFirstRoundPairs();
   const promotedIds = new Set();
   const eliminatedIds = new Set();
 
@@ -433,12 +495,11 @@ function buildRounds() {
       });
       rounds.push({ index: roundIndex + 1, rows: [{ wins: 0, matches }] });
     } else {
-      const targetRows = roundIndex + 0;
       // 构建用于配对的临时 statsMap，排除已晋级的队伍
       const filteredStatsMap = Object.fromEntries(
         Object.entries(statsMap).filter(([id]) => !promotedIds.has(id) && !eliminatedIds.has(id))
       );
-      const rowsPairs = pairByScoreGroups(filteredStatsMap, roundIndex);
+      const rowsPairs = pairByScoreGroups(filteredStatsMap, roundIndex, state.roundPairModes[roundIndex]);
       const rows = [];
       let matchCounter = 0;
       rowsPairs.forEach((rowObj) => {
@@ -610,6 +671,41 @@ function createValueInput(value, onChange, options = {}) {
   return input;
 }
 
+function updateRoundPairMode(roundIndex, value) {
+  state.roundPairModes[roundIndex] = sanitizeRoundPairMode(value);
+  recalculateAndRender();
+}
+
+function createRoundPairModeToggle(roundIndex) {
+  const currentMode = state.roundPairModes[roundIndex] || ROUND_PAIR_MODES.ORDER_PAIR;
+  const group = document.createElement('div');
+  group.className = 'round-mode-toggle';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', '切换本轮配对方式');
+
+  const options = [
+    { value: ROUND_PAIR_MODES.ORDER_PAIR, label: '顺位配对' },
+    { value: ROUND_PAIR_MODES.HEAD_TAIL_PAIR, label: '首尾配对' },
+    { value: ROUND_PAIR_MODES.GROUP_PAIR, label: '分组配对' }
+  ];
+
+  options.forEach((option) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'round-mode-option';
+    button.textContent = option.label;
+    button.dataset.mode = option.value;
+    if (option.value === currentMode) button.classList.add('is-active');
+    button.setAttribute('aria-pressed', String(option.value === currentMode));
+    button.addEventListener('click', () => {
+      updateRoundPairMode(roundIndex, option.value);
+    });
+    group.appendChild(button);
+  });
+
+  return group;
+}
+
 function renderRounds(rounds) {
   dom.bracket.innerHTML = '';
   const nameMap = Object.fromEntries(state.teams.map((team) => [team.id, team.name]));
@@ -619,7 +715,15 @@ function renderRounds(rounds) {
     column.className = 'round-col';
     if (roundIndex > 0) column.classList.add('round-col--linked');
 
-    // Column-level title is removed; each group shows its own round label.
+    const header = document.createElement('div');
+    header.className = 'round-header';
+
+    const control = document.createElement('div');
+    control.className = 'round-mode-control';
+    control.appendChild(createRoundPairModeToggle(roundIndex));
+    header.appendChild(control);
+
+    column.appendChild(header);
 
     // rounds.rows is an array of stacks (rows). Each stack is an array of matches.
     const stacks = document.createElement('div');
@@ -726,7 +830,8 @@ function saveSettingsToStorage() {
     const payload = {
       teamCount: Number(dom.teamCount?.value ?? 0) || 0,
       roundCount: Number(dom.roundCount?.value ?? 0) || 0,
-      cutoff: Number(dom.cutoff?.value ?? 0) || 0
+      cutoff: Number(dom.cutoff?.value ?? 0) || 0,
+      roundPairModes: [...state.roundPairModes]
     };
     localStorage.setItem('swiss_calculator_settings_v1', JSON.stringify(payload));
   } catch (e) {
@@ -742,6 +847,9 @@ function loadSettingsFromStorage() {
     if (parsed.teamCount) dom.teamCount.value = String(parsed.teamCount);
     if (parsed.roundCount) dom.roundCount.value = String(parsed.roundCount);
     if (dom.cutoff && parsed.cutoff !== undefined) dom.cutoff.value = String(parsed.cutoff);
+    if (Array.isArray(parsed.roundPairModes)) {
+      state.roundPairModes = normalizeRoundPairModes(Number(parsed.roundCount) || state.rounds, parsed.roundPairModes);
+    }
   } catch (e) {
     // ignore
   }
