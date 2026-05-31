@@ -79,12 +79,21 @@ function sanitizeTeamName(value, fallback) {
   return safeName || fallback;
 }
 
+function parseNumberAllowNegative(value) {
+  // 支持常见异常：把 Unicode 减号替换为 ASCII '-'，去掉不可见空白
+  if (value === undefined || value === null) return 0;
+  const s = String(value).replace(/\u2212/g, '-').replace(/\u00A0/g, ' ').trim();
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function sanitizeMatchInputObject(input) {
   return {
-    leftScore: Math.max(0, Number(input?.leftScore) || 0),
-    rightScore: Math.max(0, Number(input?.rightScore) || 0),
-    leftEval: Math.max(0, Number(input?.leftEval) || 0),
-    rightEval: Math.max(0, Number(input?.rightEval) || 0)
+    leftScore: Math.max(0, parseNumberAllowNegative(input?.leftScore)),
+    rightScore: Math.max(0, parseNumberAllowNegative(input?.rightScore)),
+    // 评价分（eval）可以为负值：保留原始数值，支持各种减号与空白格式
+    leftEval: parseNumberAllowNegative(input?.leftEval),
+    rightEval: parseNumberAllowNegative(input?.rightEval)
   };
 }
 
